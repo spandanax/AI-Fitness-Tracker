@@ -61,6 +61,86 @@ export function PostureAnalysis({ onStartExercise }) {
         }
       ]
     },
+    pullup: {
+      title: 'Pull-up Mechanics & Scapular Control',
+      primaryJoints: 'Shoulder (11/12), Elbow (13/14), Wrist (15/16)',
+      rules: [
+        {
+          name: 'Chin Over Bar Clearance',
+          optimal: 'Elbow flexion <= 75° at peak contraction',
+          fault: 'Elbow angle > 85° (Incomplete top contraction)',
+          impact: 'Reduces latissimus dorsi and rhomboid recruitment.',
+          status: 'critical'
+        },
+        {
+          name: 'Deadhang Extension',
+          optimal: 'Elbow extension > 150° at baseline deadhang',
+          fault: 'Bouncing or kipping before reaching full extension',
+          impact: 'Eliminates full stretch reflex and scapular stability.',
+          status: 'warning'
+        }
+      ]
+    },
+    dip: {
+      title: 'Dips Lockout & Shoulder Safety',
+      primaryJoints: 'Shoulder (11/12), Elbow (13/14), Wrist (15/16)',
+      rules: [
+        {
+          name: 'Elbow Parallel Descent',
+          optimal: 'Elbow angle 80° - 90° at lowest descent',
+          fault: 'Elbow angle < 70° (Dangerous hyper-depression)',
+          impact: 'Overstretches the anterior shoulder capsule and rotator cuff.',
+          status: 'critical'
+        },
+        {
+          name: 'Triceps Press Lockout',
+          optimal: 'Full extension > 155° at support finish',
+          fault: 'Incomplete lockout; resting between reps',
+          impact: 'Reduces peak triceps contraction and lockout strength.',
+          status: 'warning'
+        }
+      ]
+    },
+    lunge: {
+      title: 'Lunge Unilateral Knee & Torso Mechanics',
+      primaryJoints: 'Hip (23/24), Knee (25/26), Ankle (27/28), Shoulder (11/12)',
+      rules: [
+        {
+          name: 'Front Knee Flexion Depth',
+          optimal: 'Front knee angle <= 100° with shin near vertical',
+          fault: 'Shallow step with knee > 110° or knee overshooting toes',
+          impact: 'Reduces gluteus maximus loading and strains patellar tendon.',
+          status: 'critical'
+        },
+        {
+          name: 'Torso Vertical Alignment',
+          optimal: 'Torso angle >= 70° relative to ground',
+          fault: 'Excessive forward chest lean onto the front quad',
+          impact: 'Decreases hip stabilization demand and strains lower back.',
+          status: 'warning'
+        }
+      ]
+    },
+    jumping_jacks: {
+      title: 'Jumping Jacks Dynamic Cadence & Extension',
+      primaryJoints: 'Ankle (27/28), Hip (23/24), Shoulder (11/12), Wrist (15/16)',
+      rules: [
+        {
+          name: 'Overhead Arm Clapping',
+          optimal: 'Wrists reach above eye level at peak extension',
+          fault: 'Arms flapping below shoulder level',
+          impact: 'Diminishes deltoid and upper-back mobility work.',
+          status: 'warning'
+        },
+        {
+          name: 'Stance Width Spread',
+          optimal: 'Ankles spread >= 1.3x shoulder width',
+          fault: 'Narrow leg hop without lateral stance expansion',
+          impact: 'Reduces hip adductor/abductor loading and cardiovascular output.',
+          status: 'warning'
+        }
+      ]
+    },
     plank: {
       title: 'Plank Core Stabilization Mechanics',
       primaryJoints: 'Shoulder (11/12), Hip (23/24), Ankle (27/28)',
@@ -93,6 +173,106 @@ export function PostureAnalysis({ onStartExercise }) {
           status: 'warning'
         }
       ]
+    },
+    shoulder_press: {
+      title: 'Shoulder Press Overhead Lockout & Spine Mechanics',
+      primaryJoints: 'Shoulder (11/12), Elbow (13/14), Wrist (15/16), Hip (23/24)',
+      rules: [
+        {
+          name: 'Full Overhead Extension',
+          optimal: 'Elbow lockout >= 155° overhead',
+          fault: 'Press terminates early without full deltoid lockout',
+          impact: 'Leaves upper fibers of anterior deltoids and triceps under-activated.',
+          status: 'critical'
+        },
+        {
+          name: 'Lumbar Spine Stability',
+          optimal: 'Torso remains strictly vertical without backward arch',
+          fault: 'Excessive lumbar hyperextension to turn press into incline chest press',
+          impact: 'High spinal shear forces on vertebrae under vertical load.',
+          status: 'warning'
+        }
+      ]
+    },
+    mountain_climbers: {
+      title: 'Mountain Climbers Dynamic Core & Hip Rhythm',
+      primaryJoints: 'Shoulder (11/12), Hip (23/24), Knee (25/26), Ankle (27/28)',
+      rules: [
+        {
+          name: 'Knee Drive Depth',
+          optimal: 'Driving knee angle <= 80° towards chest',
+          fault: 'Shallow foot shuffle without hip flexion',
+          impact: 'Reduces rectus abdominis and psoas contraction.',
+          status: 'critical'
+        },
+        {
+          name: 'Plank Elevation Control',
+          optimal: 'Hips maintain level height with shoulders',
+          fault: 'Hips piking high into the air',
+          impact: 'Relieves core tension and turns movement into shoulder rest.',
+          status: 'warning'
+        }
+      ]
+    },
+    crunches: {
+      title: 'Crunches Abdominal Flexion Biomechanics',
+      primaryJoints: 'Shoulder (11/12), Hip (23/24), Knee (25/26)',
+      rules: [
+        {
+          name: 'Torso Contraction Arc',
+          optimal: 'Torso-Femur angle <= 90° with shoulder blades clearing ground',
+          fault: 'Head-bobbing or neck-pulling without thoracic flexion',
+          impact: 'Strains cervical neck muscles while abdominal muscles remain flaccid.',
+          status: 'critical'
+        },
+        {
+          name: 'Eccentric Reset',
+          optimal: 'Return flat to baseline angle > 125°',
+          fault: 'Rushing reps without abdominal muscle elongation',
+          impact: 'Cuts eccentric hypertrophy signaling in half.',
+          status: 'warning'
+        }
+      ]
+    },
+    burpees: {
+      title: 'Burpees Full-Kinetic Multi-Plane Mechanics',
+      primaryJoints: 'Shoulder (11/12), Hip (23/24), Knee (25/26), Wrist (15/16)',
+      rules: [
+        {
+          name: 'Horizontal Plank Drop',
+          optimal: 'Body forms complete horizontal plank on ground',
+          fault: 'Incomplete descent or collapsing uncontrolled onto floor',
+          impact: 'Risks wrist sprain or lower back hyperextension.',
+          status: 'critical'
+        },
+        {
+          name: 'Vertical Jump & Overhead Clap',
+          optimal: 'Hips extend and wrists reach above head during vertical leap',
+          fault: 'Standing up slowly without vertical plyometric explosion',
+          impact: 'Eliminates fast-twitch power training from the movement.',
+          status: 'warning'
+        }
+      ]
+    },
+    calf_raises: {
+      title: 'Calf Raises Plantarflexion & Ankle Alignment',
+      primaryJoints: 'Knee (25/26), Ankle (27/28), Toe (31/32)',
+      rules: [
+        {
+          name: 'Plantarflexion Peak Elevation',
+          optimal: 'Ankle angle >= 138° with heel elevated high off floor',
+          fault: 'Minimal heel lift (ankle angle < 130°)',
+          impact: 'Fails to reach gastrocnemius peak contraction.',
+          status: 'critical'
+        },
+        {
+          name: 'Knee Extension Stability',
+          optimal: 'Knees remain locked straight (> 150°)',
+          fault: 'Bending knees to bounce or spring upwards',
+          impact: 'Shifts load off gastrocnemius onto quadriceps.',
+          status: 'warning'
+        }
+      ]
     }
   };
 
@@ -104,17 +284,17 @@ export function PostureAnalysis({ onStartExercise }) {
       <div>
         <h1 className="text-3xl font-extrabold text-white tracking-tight">AI Posture Correction Engine</h1>
         <p className="text-sm text-neutral-400 mt-1">
-          Explainable, rule-based biomechanical analysis evaluating real-time joints, angles, and postural faults
+          Explainable, rule-based biomechanical analysis evaluating real-time joints, angles, and postural faults across all 13 exercises
         </p>
       </div>
 
       {/* Exercise Selector Tabs */}
-      <div className="flex gap-2 border-b border-neutral-800 pb-3">
+      <div className="flex gap-2 overflow-x-auto pb-3 border-b border-neutral-800 scrollbar-none">
         {Object.keys(exerciseGuides).map(key => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition capitalize ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition capitalize shrink-0 ${
               activeTab === key
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
                 : 'bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white'
@@ -136,7 +316,7 @@ export function PostureAnalysis({ onStartExercise }) {
           </div>
           <button
             onClick={() => onStartExercise(activeTab)}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/20 transition"
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/20 transition self-start md:self-auto"
           >
             Train This Form Now
             <ArrowRight className="w-4 h-4" />
