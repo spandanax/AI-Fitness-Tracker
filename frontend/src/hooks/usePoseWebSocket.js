@@ -31,18 +31,14 @@ export function usePoseWebSocket(exerciseName, captureFrame, isRunning) {
   const getCandidateUrls = () => {
     const urls = [];
     if (typeof window !== 'undefined') {
-      const is127 = window.location.hostname === '127.0.0.1';
-      if (is127) {
-        urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
-        urls.push(`ws://localhost:8000/ws/workout/${cleanExercise}`);
-      } else {
-        urls.push(`ws://localhost:8000/ws/workout/${cleanExercise}`);
-        urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
-      }
-      // Also try Vite dev proxy ws
-      if (window.location.port === '5173') {
+      // 1. Direct IPv4 loopback (port 8000) - avoids Windows IPv6 localhost issues
+      urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
+      // 2. Vite dev server proxy
+      if (window.location.host) {
         urls.push(`ws://${window.location.host}/ws/workout/${cleanExercise}`);
       }
+      // 3. Fallback localhost:8000
+      urls.push(`ws://localhost:8000/ws/workout/${cleanExercise}`);
     } else {
       urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
     }

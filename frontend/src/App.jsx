@@ -75,6 +75,8 @@ export default function App() {
           <LiveWorkout
             initialExercise={selectedExercise}
             user={user}
+            voiceEnabled={voiceEnabled}
+            setVoiceEnabled={setVoiceEnabled}
             onWorkoutSaved={refreshData}
           />
         );
