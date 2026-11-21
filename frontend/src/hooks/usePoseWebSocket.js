@@ -8,13 +8,14 @@ export function usePoseWebSocket(exerciseName, captureFrame, isRunning) {
     stage: 'START',
     quality_score: 100,
     angles: {},
-    feedback: 'Connecting to AI trainer...',
+    feedback: 'Position yourself in frame to begin tracking',
     status: 'good',
     person_visible: false,
     guidance: 'Position yourself in front of camera',
     duration_seconds: 0,
     fatigue: { fatigue_detected: false, fatigue_level: 'None', message: 'Form is stable' },
-    landmarks: []
+    landmarks: [],
+    connectionColors: {}
   });
 
   const [connected, setConnected] = useState(false);
@@ -24,77 +25,128 @@ export function usePoseWebSocket(exerciseName, captureFrame, isRunning) {
   const isRunningRef = useRef(isRunning);
   isRunningRef.current = isRunning;
 
-  // Initialize and connect WebSocket
+  const cleanExercise = (exerciseName || 'squat').toLowerCase().trim().replace(/[-\s]+/g, '_');
+
+  // Candidate WebSocket endpoints
+  const getCandidateUrls = () => {
+    const urls = [];
+    if (typeof window !== 'undefined') {
+      const is127 = window.location.hostname === '127.0.0.1';
+      if (is127) {
+        urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
+        urls.push(`ws://localhost:8000/ws/workout/${cleanExercise}`);
+      } else {
+        urls.push(`ws://localhost:8000/ws/workout/${cleanExercise}`);
+        urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
+      }
+      // Also try Vite dev proxy ws
+      if (window.location.port === '5173') {
+        urls.push(`ws://${window.location.host}/ws/workout/${cleanExercise}`);
+      }
+    } else {
+      urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
+    }
+    return [...new Set(urls)];
+  };
+
   useEffect(() => {
     let isMounted = true;
-    const wsUrl = `ws://localhost:8000/ws/workout/${exerciseName.toLowerCase()}`;
-    
-    setConnected(false);
-    setConnectionError(null);
+    let currentSocket = null;
+    let urlIndex = 0;
+    const candidateUrls = getCandidateUrls();
 
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
+    const connect = () => {
       if (!isMounted) return;
-      setConnected(true);
+      if (urlIndex >= candidateUrls.length) {
+        urlIndex = 0; // cycle back
+      }
+
+      const targetUrl = candidateUrls[urlIndex];
+      setConnected(false);
       setConnectionError(null);
-      console.log(`Connected to Pose WebSocket for ${exerciseName}`);
-    };
 
-    ws.onmessage = (event) => {
-      if (!isMounted) return;
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'command_ack') return;
-        setPoseData(prev => ({
-          ...prev,
-          ...data,
-          landmarks: data.landmarks || []
-        }));
-      } catch (e) {
-        console.error('Failed to parse pose response:', e);
+        const ws = new WebSocket(targetUrl);
+        currentSocket = ws;
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!isMounted) return;
+          setConnected(true);
+          setConnectionError(null);
+          console.log(`Connected to AI Pose WebSocket at ${targetUrl} for ${cleanExercise}`);
+        };
+
+        ws.onmessage = (event) => {
+          if (!isMounted) return;
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'command_ack') return;
+            setPoseData(prev => ({
+              ...prev,
+              ...data,
+              landmarks: data.landmarks || [],
+              connectionColors: data.connection_colors || data.connectionColors || {}
+            }));
+          } catch (e) {
+            console.error('Failed to parse pose response:', e);
+          }
+        };
+
+        ws.onerror = (err) => {
+          if (!isMounted) return;
+          console.warn(`WebSocket error on ${targetUrl}:`, err);
+        };
+
+        ws.onclose = () => {
+          if (!isMounted) return;
+          setConnected(false);
+          // Try next candidate URL after short delay
+          urlIndex++;
+          setTimeout(() => {
+            if (isMounted) connect();
+          }, 1500);
+        };
+      } catch (err) {
+        console.warn('WebSocket init exception:', err);
+        urlIndex++;
+        setTimeout(() => {
+          if (isMounted) connect();
+        }, 1500);
       }
     };
 
-    ws.onerror = (err) => {
-      if (!isMounted) return;
-      console.warn('WebSocket error:', err);
-      setConnectionError('Connection to AI Vision server failed. Please ensure backend is running.');
-      setConnected(false);
-    };
-
-    ws.onclose = () => {
-      if (!isMounted) return;
-      setConnected(false);
-    };
+    connect();
 
     return () => {
       isMounted = false;
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      if (currentSocket && (currentSocket.readyState === WebSocket.OPEN || currentSocket.readyState === WebSocket.CONNECTING)) {
+        currentSocket.close();
       }
     };
-  }, [exerciseName]);
+  }, [cleanExercise]);
 
-  // Frame sender loop (at ~15 fps)
+  // Frame sender loop (runs continuously when connected and webcam capture is available)
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !captureFrame) return;
 
     intervalRef.current = setInterval(() => {
-      if (!isRunningRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         return;
       }
 
       const frameB64 = captureFrame();
       if (frameB64) {
         try {
-          wsRef.current.send(JSON.stringify({ image: frameB64 }));
+          wsRef.current.send(JSON.stringify({
+            image: frameB64,
+            active: isRunningRef.current
+          }));
         } catch (err) {
           console.warn('Failed to send frame to WebSocket:', err);
         }
       }
-    }, 70); // ~14-15 FPS
+    }, 66); // ~15 FPS
 
     return () => {
       if (intervalRef.current) {

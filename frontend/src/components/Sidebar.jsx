@@ -98,9 +98,9 @@ export function Sidebar({ activePage, setActivePage }) {
         <div className="pt-3 px-3">
           <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800/80 text-[11px] text-neutral-400">
             <span className="text-white font-semibold block">MediaPipe Pose v1.0</span>
-            <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
-              FastAPI WebSocket Connected
+            <span className="text-[10px] text-blue-400 flex items-center gap-1 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block"></span>
+              Vision Tracking Engine
             </span>
           </div>
         </div>

@@ -14,7 +14,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Camera,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { useWebcam } from '../hooks/useWebcam';
 import { usePoseWebSocket } from '../hooks/usePoseWebSocket';
@@ -53,7 +56,7 @@ export function LiveWorkout({ initialExercise = 'squat', user, onWorkoutSaved })
   const [isFinishing, setIsFinishing] = useState(false);
 
   // Hooks
-  const { videoRef, permissionGranted, error: webcamError, captureFrame } = useWebcam();
+  const { videoRef, permissionGranted, error: webcamError, errorType, isLoading: cameraLoading, startCamera, captureFrame } = useWebcam();
   const { poseData, connected, resetExercise, pauseExercise, resumeExercise } = usePoseWebSocket(exercise, captureFrame, isRunning);
   const { speak, enabled: voiceEnabled, setEnabled: setVoiceEnabled } = useSpeechSynthesis();
 
@@ -290,6 +293,7 @@ export function LiveWorkout({ initialExercise = 'squat', user, onWorkoutSaved })
                 landmarks={poseData.landmarks}
                 status={poseData.status}
                 angles={poseData.angles}
+                connectionColors={poseData.connectionColors}
                 width={640}
                 height={480}
               />
@@ -341,13 +345,25 @@ export function LiveWorkout({ initialExercise = 'squat', user, onWorkoutSaved })
               )}
             </div>
 
-            {/* Webcam Error Warning */}
-            {webcamError && (
+            {(cameraLoading || webcamError) && (
               <div className="absolute inset-0 bg-neutral-950/90 flex flex-col items-center justify-center p-6 text-center z-30">
-                <ShieldAlert className="w-12 h-12 text-rose-500 mb-3" />
-                <h3 className="text-lg font-bold text-white mb-1">Camera Permission Required</h3>
-                <p className="text-sm text-neutral-400 max-w-sm mb-4">{webcamError}</p>
-                <p className="text-xs text-neutral-500">Please grant webcam access in your browser toolbar.</p>
+                {cameraLoading ? (
+                  <>
+                    <Loader2 className="w-12 h-12 animate-spin text-emerald-400 mb-3" />
+                    <h3 className="text-lg font-bold text-white mb-1">Initializing Camera…</h3>
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert className="w-12 h-12 text-rose-500 mb-3" />
+                    <h3 className="text-lg font-bold text-white mb-1">Camera Permission Required</h3>
+                    <p className="text-sm text-neutral-400 max-w-sm mb-4">{webcamError}</p>
+                    <p className="text-xs text-neutral-500 mb-2">Please grant webcam access in your browser toolbar.</p>
+                    <button onClick={startCamera} className="flex items-center gap-2 px-4 py-2 bg-rose-500/20 border border-rose-500 text-rose-400 rounded hover:bg-rose-500/30">
+                      <RefreshCw className="w-4 h-4" />
+                      Retry
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

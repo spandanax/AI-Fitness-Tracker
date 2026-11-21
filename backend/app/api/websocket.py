@@ -105,19 +105,29 @@ async def workout_websocket_endpoint(websocket: WebSocket, exercise_name: str):
                 })
                 continue
 
+            # Check if active workout tracking or preview mode
+            is_active = data.get("active", False)
+            saved_reps = exercise.reps
+
             # Process with active exercise detector
             result = exercise.process_frame(landmarks)
 
-            # Check if a new rep was completed
-            if exercise.reps > last_logged_rep:
-                last_logged_rep = exercise.reps
-                if exercise.last_rep_data:
-                    faults_count = len(exercise.last_rep_data.get("faults", "").split(",")) if "Clean" not in exercise.last_rep_data.get("faults", "") else 0
-                    fatigue.record_rep(
-                        duration_seconds=exercise.last_rep_data.get("duration", 1.5),
-                        quality_score=exercise.last_rep_data.get("score", 90.0),
-                        fault_count=faults_count
-                    )
+            if not is_active:
+                # Do not count reps or record fatigue during preview / countdown
+                exercise.reps = saved_reps
+                if isinstance(result, dict):
+                    result["reps"] = saved_reps
+            else:
+                # Check if a new rep was completed
+                if exercise.reps > last_logged_rep:
+                    last_logged_rep = exercise.reps
+                    if exercise.last_rep_data:
+                        faults_count = len(exercise.last_rep_data.get("faults", "").split(",")) if "Clean" not in exercise.last_rep_data.get("faults", "") else 0
+                        fatigue.record_rep(
+                            duration_seconds=exercise.last_rep_data.get("duration", 1.5),
+                            quality_score=exercise.last_rep_data.get("score", 90.0),
+                            fault_count=faults_count
+                        )
 
             fatigue_info = fatigue.evaluate_fatigue()
 
@@ -136,7 +146,8 @@ async def workout_websocket_endpoint(websocket: WebSocket, exercise_name: str):
                 "duration_seconds": result.get("duration_seconds", 0),
                 "last_rep": result.get("last_rep"),
                 "fatigue": fatigue_info,
-                "landmarks": landmarks
+                "landmarks": landmarks,
+                "connection_colors": result.get("connection_colors", {})
             }
 
             await websocket.send_json(response)
