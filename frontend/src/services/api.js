@@ -1,12 +1,31 @@
-// Base endpoints to try:
-// 1. Direct http://127.0.0.1:8000/api/v1 (IPv4 loopback, fastest, avoids proxy 500)
-// 2. Direct http://localhost:8000/api/v1
-// 3. Vite dev server proxy '/api/v1'
-const CANDIDATE_BASES = [
-  'http://127.0.0.1:8000/api/v1',
-  'http://localhost:8000/api/v1',
-  '/api/v1'
-];
+// Backend API Base Configuration:
+// In production or when VITE_API_URL is configured, use it directly (ensuring /api/v1 suffix).
+// In local development without VITE_API_URL, fall back to localhost / proxy candidates.
+const envApiUrl = import.meta.env.VITE_API_URL;
+const isProd = import.meta.env.PROD;
+
+const getCandidateBases = () => {
+  if (envApiUrl) {
+    const trimmed = envApiUrl.replace(/\/+$/, '');
+    const baseWithApi = trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`;
+    // When an explicit backend URL is provided (e.g., in production), only use that URL
+    return [baseWithApi];
+  }
+
+  if (isProd) {
+    // Production without explicit VITE_API_URL uses origin-relative /api/v1
+    return ['/api/v1'];
+  }
+
+  // Local development fallbacks only
+  return [
+    'http://127.0.0.1:8000/api/v1',
+    'http://localhost:8000/api/v1',
+    '/api/v1'
+  ];
+};
+
+const CANDIDATE_BASES = getCandidateBases();
 
 let workingBase = null;
 
@@ -31,7 +50,7 @@ async function request(endpoint, options = {}) {
       });
 
       // If Vite proxy returns 500 (target backend unreachable), don't treat as workingBase; try direct backend URLs
-      if (res.status === 500 && base === '/api/v1') {
+      if (res.status === 500 && base === '/api/v1' && !isProd) {
         lastRes = res;
         continue;
       }
@@ -45,7 +64,10 @@ async function request(endpoint, options = {}) {
   }
 
   if (lastRes) return lastRes;
-  throw new Error(`Unable to connect to backend server on port 8000: ${lastError?.message || 'Connection refused'}`);
+  const failureMsg = envApiUrl
+    ? `Unable to connect to backend at ${envApiUrl}: ${lastError?.message || 'Network error'}`
+    : `Unable to connect to backend server: ${lastError?.message || 'Connection refused'}`;
+  throw new Error(failureMsg);
 }
 
 async function handleResponse(res, errorMessage) {
@@ -57,7 +79,7 @@ async function handleResponse(res, errorMessage) {
       errorBody = res.statusText;
     }
 
-    if (res.status === 500 && (!errorBody || errorBody.includes('ECONNREFUSED'))) {
+    if (res.status === 500 && (!errorBody || errorBody.includes('ECONNREFUSED')) && !envApiUrl) {
       throw new Error(`Backend server is not running on port 8000. Start it by running 'python run_backend.py' in your terminal.`);
     }
 

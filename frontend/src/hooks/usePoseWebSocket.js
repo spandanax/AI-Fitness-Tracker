@@ -30,18 +30,47 @@ export function usePoseWebSocket(exerciseName, captureFrame, isRunning) {
   // Candidate WebSocket endpoints
   const getCandidateUrls = () => {
     const urls = [];
+    const envApiUrl = import.meta.env.VITE_API_URL;
+    const isProd = import.meta.env.PROD;
+
+    // 1. If VITE_API_URL is configured, derive ws:// or wss:// from it
+    if (envApiUrl) {
+      try {
+        const trimmed = envApiUrl.replace(/\/+$/, '');
+        // Strip any trailing /api/v1 if present in VITE_API_URL
+        const originUrl = trimmed.replace(/\/api(\/v1)?$/i, '');
+        const wsBase = originUrl.replace(/^https:\/\//i, 'wss://').replace(/^http:\/\//i, 'ws://');
+        urls.push(`${wsBase}/ws/workout/${cleanExercise}`);
+      } catch (e) {
+        console.warn('Failed to parse VITE_API_URL for WebSocket:', e);
+      }
+      // When VITE_API_URL is set, do not attempt localhost connections
+      return urls;
+    }
+
+    // 2. Production fallback without explicit VITE_API_URL uses window.location host
+    if (isProd) {
+      if (typeof window !== 'undefined' && window.location.host) {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        urls.push(`${protocol}//${window.location.host}/ws/workout/${cleanExercise}`);
+      }
+      return urls;
+    }
+
+    // 3. Local development candidates
     if (typeof window !== 'undefined') {
-      // 1. Direct IPv4 loopback (port 8000) - avoids Windows IPv6 localhost issues
+      // Direct IPv4 loopback (port 8000)
       urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
-      // 2. Vite dev server proxy
+      // Vite dev server proxy
       if (window.location.host) {
         urls.push(`ws://${window.location.host}/ws/workout/${cleanExercise}`);
       }
-      // 3. Fallback localhost:8000
+      // Fallback localhost:8000
       urls.push(`ws://localhost:8000/ws/workout/${cleanExercise}`);
     } else {
       urls.push(`ws://127.0.0.1:8000/ws/workout/${cleanExercise}`);
     }
+
     return [...new Set(urls)];
   };
 
