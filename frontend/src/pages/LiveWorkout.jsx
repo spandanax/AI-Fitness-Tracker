@@ -445,6 +445,7 @@ export function LiveWorkout({
                 status={poseData.status}
                 angles={poseData.angles}
                 connectionColors={poseData.connectionColors}
+                videoRef={videoRef}
               />
             )}
 

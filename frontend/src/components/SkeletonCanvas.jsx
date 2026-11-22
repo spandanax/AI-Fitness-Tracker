@@ -16,31 +16,47 @@ const POSE_CONNECTIONS = [
   [28, 30], [28, 32], [30, 32], // Right foot
 ];
 
+// Color mapping for posture feedback:
+// Green: Correct / Optimal Form
+// Yellow: Posture Attention / Warning (Default body line)
+// Red: Critical Form Fault / Unsafe Movement
 const COLOR_MAP = {
-  good: { stroke: '#10B981', glow: 'rgba(16, 185, 129, 0.7)', joint: '#34D399' },
-  warning: { stroke: '#F59E0B', glow: 'rgba(245, 158, 11, 0.7)', joint: '#FBBF24' },
-  bad: { stroke: '#EF4444', glow: 'rgba(239, 68, 68, 0.8)', joint: '#F87171' },
+  good: { stroke: '#10B981', glow: 'rgba(16, 185, 129, 0.75)', joint: '#34D399' },
+  warning: { stroke: '#EAB308', glow: 'rgba(234, 179, 8, 0.85)', joint: '#FDE047' },
+  bad: { stroke: '#EF4444', glow: 'rgba(239, 68, 68, 0.85)', joint: '#F87171' },
+};
+
+// Default high-visibility yellow line theme when posture condition is standard/tracking
+const DEFAULT_YELLOW_THEME = {
+  stroke: '#FACC15',
+  glow: 'rgba(250, 204, 21, 0.85)',
+  joint: '#FEF08A'
 };
 
 export function SkeletonCanvas({
   landmarks = [],
   status = 'good',
   angles = {},
-  connectionColors = {}
+  connectionColors = {},
+  videoRef = null
 }) {
   const canvasRef = useRef(null);
 
-  // Auto-resize canvas to match its rendered display size
+  // Synchronize canvas coordinate dimensions with actual rendered video container
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const resize = () => {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        if (canvas.width !== rect.width || canvas.height !== rect.height) {
-          canvas.width = rect.width;
-          canvas.height = rect.height;
+      const targetElem = videoRef?.current || canvas.parentElement || canvas;
+      const rect = targetElem.getBoundingClientRect();
+      const targetWidth = Math.round(rect.width);
+      const targetHeight = Math.round(rect.height);
+
+      if (targetWidth > 0 && targetHeight > 0) {
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
         }
       }
     };
@@ -48,9 +64,10 @@ export function SkeletonCanvas({
     resize();
 
     let observer = null;
-    if (window.ResizeObserver && canvas.parentElement) {
+    const observeTarget = canvas.parentElement || videoRef?.current;
+    if (window.ResizeObserver && observeTarget) {
       observer = new ResizeObserver(resize);
-      observer.observe(canvas.parentElement);
+      observer.observe(observeTarget);
     }
 
     window.addEventListener('resize', resize);
@@ -58,21 +75,22 @@ export function SkeletonCanvas({
       window.removeEventListener('resize', resize);
       if (observer) observer.disconnect();
     };
-  }, []);
+  }, [videoRef]);
 
-  // Draw skeleton whenever landmarks or status changes
+  // Real-time canvas render loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!landmarks || landmarks.length < 25) return;
+    // Require valid MediaPipe pose landmarks (minimum shoulders/hips detected)
+    if (!landmarks || landmarks.length < 17) return;
 
     const w = canvas.width;
     const h = canvas.height;
 
-    // 1. Draw skeleton connection lines
+    // 1. Draw Skeleton Connection Lines (Yellow body lines with dynamic posture color support)
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -81,15 +99,29 @@ export function SkeletonCanvas({
       const p1 = landmarks[i];
       const p2 = landmarks[j];
 
-      if (p1 && p2 && p1.visibility > 0.35 && p2.visibility > 0.35) {
+      // Verify both joint endpoints meet confidence threshold
+      const v1 = typeof p1?.visibility === 'number' ? p1.visibility : 1.0;
+      const v2 = typeof p2?.visibility === 'number' ? p2.visibility : 1.0;
+
+      if (p1 && p2 && v1 > 0.25 && v2 > 0.25) {
         const key = `${i}_${j}`;
-        const connStatus = connectionColors[key] || status || 'good';
-        const colors = COLOR_MAP[connStatus] || COLOR_MAP.good;
+        const connStatus = connectionColors[key];
+
+        // If a joint connection has a specific posture fault status, use good/warning/bad;
+        // Otherwise default to high-visibility yellow lines as required
+        let colors = DEFAULT_YELLOW_THEME;
+        if (connStatus && COLOR_MAP[connStatus]) {
+          colors = COLOR_MAP[connStatus];
+        } else if (status === 'bad') {
+          colors = COLOR_MAP.bad;
+        } else if (status === 'warning') {
+          colors = COLOR_MAP.warning;
+        }
 
         ctx.lineWidth = 4.5;
         ctx.strokeStyle = colors.stroke;
         ctx.shadowColor = colors.glow;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 10;
 
         ctx.beginPath();
         ctx.moveTo(p1.x * w, p1.y * h);
@@ -99,60 +131,62 @@ export function SkeletonCanvas({
     }
     ctx.restore();
 
-    // 2. Draw joint landmark dots (shoulders, elbows, wrists, hips, knees, ankles)
-    const activeColor = COLOR_MAP[status] || COLOR_MAP.good;
+    // 2. Draw Visible Circles at Detected Joints (shoulders, elbows, wrists, hips, knees, ankles)
+    const activePostureColor = COLOR_MAP[status] || DEFAULT_YELLOW_THEME;
 
     landmarks.forEach((lm, idx) => {
-      // Skip facial landmarks 1-10, keep nose (0) and body points (11-32)
+      // Keep key body joints: nose (0) and body joints (11 to 32)
       if (idx > 0 && idx < 11) return;
-      if (lm.visibility > 0.35) {
+      const v = typeof lm?.visibility === 'number' ? lm.visibility : 1.0;
+
+      if (v > 0.25) {
         const x = lm.x * w;
         const y = lm.y * h;
 
         ctx.save();
         ctx.beginPath();
-        ctx.arc(x, y, 5.5, 0, 2 * Math.PI);
-        ctx.fillStyle = '#FFFFFF';
-        ctx.shadowColor = activeColor.stroke;
-        ctx.shadowBlur = 10;
+        ctx.arc(x, y, 6, 0, 2 * Math.PI);
+        // Bright yellow joint center fill with posture-coded glow
+        ctx.fillStyle = '#FEF08A';
+        ctx.shadowColor = activePostureColor.glow;
+        ctx.shadowBlur = 12;
         ctx.fill();
 
         ctx.lineWidth = 2.5;
-        ctx.strokeStyle = activeColor.joint;
+        ctx.strokeStyle = activePostureColor.stroke;
         ctx.stroke();
         ctx.restore();
       }
     });
 
-    // 3. Render joint angle labels if relevant
+    // 3. Render Real-time Anatomical Joint Angle Callouts
     ctx.save();
-    ctx.font = '700 11px monospace';
-    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '700 12px monospace';
     ctx.textAlign = 'center';
 
     const drawAngleTag = (text, x, y) => {
       const padding = 6;
       const textWidth = ctx.measureText(text).width;
       ctx.fillStyle = 'rgba(10, 10, 14, 0.85)';
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.7)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#FACC15';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.roundRect(x - textWidth / 2 - padding, y - 10, textWidth + padding * 2, 20, 6);
+      ctx.roundRect(x - textWidth / 2 - padding, y - 11, textWidth + padding * 2, 22, 6);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = '#93C5FD';
+      ctx.fillStyle = '#FEF08A';
       ctx.fillText(text, x, y + 4);
     };
 
-    if (angles.knee_angle && landmarks[25] && landmarks[25].visibility > 0.4) {
-      drawAngleTag(`${Math.round(angles.knee_angle)}°`, landmarks[25].x * w + 30, landmarks[25].y * h);
+    if (angles.knee_angle && landmarks[25] && (landmarks[25].visibility ?? 1) > 0.3) {
+      drawAngleTag(`${Math.round(angles.knee_angle)}°`, landmarks[25].x * w + 35, landmarks[25].y * h);
     }
-    if (angles.elbow_angle && landmarks[13] && landmarks[13].visibility > 0.4) {
-      drawAngleTag(`${Math.round(angles.elbow_angle)}°`, landmarks[13].x * w + 30, landmarks[13].y * h);
+    if (angles.elbow_angle && landmarks[13] && (landmarks[13].visibility ?? 1) > 0.3) {
+      drawAngleTag(`${Math.round(angles.elbow_angle)}°`, landmarks[13].x * w + 35, landmarks[13].y * h);
     }
-    if (angles.hip_angle && landmarks[23] && landmarks[23].visibility > 0.4) {
-      drawAngleTag(`${Math.round(angles.hip_angle)}°`, landmarks[23].x * w - 30, landmarks[23].y * h);
+    if (angles.hip_angle && landmarks[23] && (landmarks[23].visibility ?? 1) > 0.3) {
+      drawAngleTag(`${Math.round(angles.hip_angle)}°`, landmarks[23].x * w - 35, landmarks[23].y * h);
     }
 
     ctx.restore();
