@@ -18,15 +18,15 @@ const POSE_CONNECTIONS = [
 
 // Color mapping for posture feedback:
 // Green: Correct / Optimal Form
-// Yellow: Posture Attention / Warning (Default body line)
+// Yellow: Posture Attention / Active Tracking (Default body lines)
 // Red: Critical Form Fault / Unsafe Movement
 const COLOR_MAP = {
-  good: { stroke: '#10B981', glow: 'rgba(16, 185, 129, 0.75)', joint: '#34D399' },
-  warning: { stroke: '#EAB308', glow: 'rgba(234, 179, 8, 0.85)', joint: '#FDE047' },
+  good: { stroke: '#10B981', glow: 'rgba(16, 185, 129, 0.8)', joint: '#34D399' },
+  warning: { stroke: '#FACC15', glow: 'rgba(250, 204, 21, 0.85)', joint: '#FEF08A' },
   bad: { stroke: '#EF4444', glow: 'rgba(239, 68, 68, 0.85)', joint: '#F87171' },
 };
 
-// Default high-visibility yellow line theme when posture condition is standard/tracking
+// Default high-visibility yellow line theme for detected body skeleton
 const DEFAULT_YELLOW_THEME = {
   stroke: '#FACC15',
   glow: 'rgba(250, 204, 21, 0.85)',
@@ -41,81 +41,98 @@ export function SkeletonCanvas({
   videoRef = null
 }) {
   const canvasRef = useRef(null);
+  const latestStateRef = useRef({ landmarks, status, angles, connectionColors });
 
-  // Synchronize canvas coordinate dimensions with actual rendered video container
+  // Always keep latest props in ref for instantaneous redrawing on resize
   useEffect(() => {
+    latestStateRef.current = { landmarks, status, angles, connectionColors };
+  }, [landmarks, status, angles, connectionColors]);
+
+  // Main drawing engine function
+  const renderFrame = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const resize = () => {
-      const targetElem = videoRef?.current || canvas.parentElement || canvas;
-      const rect = targetElem.getBoundingClientRect();
-      const targetWidth = Math.round(rect.width);
-      const targetHeight = Math.round(rect.height);
+    // 1. Synchronize canvas internal bitmap buffer with actual rendered display dimensions
+    const rect = canvas.getBoundingClientRect();
+    const displayWidth = Math.round(rect.width) || canvas.clientWidth || 640;
+    const displayHeight = Math.round(rect.height) || canvas.clientHeight || 480;
 
-      if (targetWidth > 0 && targetHeight > 0) {
-        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-          canvas.width = targetWidth;
-          canvas.height = targetHeight;
-        }
+    if (displayWidth > 0 && displayHeight > 0) {
+      if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+        canvas.width = displayWidth;
+        canvas.height = displayHeight;
       }
-    };
-
-    resize();
-
-    let observer = null;
-    const observeTarget = canvas.parentElement || videoRef?.current;
-    if (window.ResizeObserver && observeTarget) {
-      observer = new ResizeObserver(resize);
-      observer.observe(observeTarget);
     }
 
-    window.addEventListener('resize', resize);
-    return () => {
-      window.removeEventListener('resize', resize);
-      if (observer) observer.disconnect();
-    };
-  }, [videoRef]);
-
-  // Real-time canvas render loop
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Clear prior frame
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Require valid MediaPipe pose landmarks (minimum shoulders/hips detected)
-    if (!landmarks || landmarks.length < 17) return;
+    const { landmarks: lms, status: st, angles: angs, connectionColors: conns } = latestStateRef.current;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    // Require valid MediaPipe landmarks array
+    if (!lms || !Array.isArray(lms) || lms.length < 17) return;
 
-    // 1. Draw Skeleton Connection Lines (Yellow body lines with dynamic posture color support)
+    const canvasW = canvas.width;
+    const canvasH = canvas.height;
+
+    // 2. Compute object-cover coordinate mapping so skeleton aligns with video aspect-ratio
+    const videoElem = videoRef?.current;
+    let renderW = canvasW;
+    let renderH = canvasH;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (videoElem && videoElem.videoWidth > 0 && videoElem.videoHeight > 0) {
+      const vW = videoElem.videoWidth;
+      const vH = videoElem.videoHeight;
+      const scale = Math.max(canvasW / vW, canvasH / vH);
+      renderW = vW * scale;
+      renderH = vH * scale;
+      offsetX = (canvasW - renderW) / 2;
+      offsetY = (canvasH - renderH) / 2;
+    }
+
+    // Helper to transform normalized landmark coordinates to exact screen pixels
+    const toScreen = (lm) => {
+      if (!lm || typeof lm.x !== 'number' || typeof lm.y !== 'number' || isNaN(lm.x) || isNaN(lm.y)) {
+        return null;
+      }
+      return {
+        x: offsetX + lm.x * renderW,
+        y: offsetY + lm.y * renderH,
+        visibility: typeof lm.visibility === 'number' ? lm.visibility : 1.0
+      };
+    };
+
+    // 3. Draw Skeleton Connection Lines (Vibrant Yellow with Posture Coloring)
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     for (const [i, j] of POSE_CONNECTIONS) {
-      const p1 = landmarks[i];
-      const p2 = landmarks[j];
+      const p1Raw = lms[i];
+      const p2Raw = lms[j];
+      const p1 = toScreen(p1Raw);
+      const p2 = toScreen(p2Raw);
 
-      // Verify both joint endpoints meet confidence threshold
-      const v1 = typeof p1?.visibility === 'number' ? p1.visibility : 1.0;
-      const v2 = typeof p2?.visibility === 'number' ? p2.visibility : 1.0;
+      // Only draw when both joint endpoints are within confidence limits
+      if (p1 && p2 && p1.visibility >= 0.15 && p2.visibility >= 0.15) {
+        // Check bidirectional keys for custom connection status
+        const key1 = `${i}_${j}`;
+        const key2 = `${j}_${i}`;
+        const connStatus = conns?.[key1] || conns?.[key2];
 
-      if (p1 && p2 && v1 > 0.25 && v2 > 0.25) {
-        const key = `${i}_${j}`;
-        const connStatus = connectionColors[key];
-
-        // If a joint connection has a specific posture fault status, use good/warning/bad;
-        // Otherwise default to high-visibility yellow lines as required
         let colors = DEFAULT_YELLOW_THEME;
         if (connStatus && COLOR_MAP[connStatus]) {
           colors = COLOR_MAP[connStatus];
-        } else if (status === 'bad') {
+        } else if (st === 'bad') {
           colors = COLOR_MAP.bad;
-        } else if (status === 'warning') {
-          colors = COLOR_MAP.warning;
+        } else if (st === 'good') {
+          colors = COLOR_MAP.good;
         }
 
         ctx.lineWidth = 4.5;
@@ -124,42 +141,39 @@ export function SkeletonCanvas({
         ctx.shadowBlur = 10;
 
         ctx.beginPath();
-        ctx.moveTo(p1.x * w, p1.y * h);
-        ctx.lineTo(p2.x * w, p2.y * h);
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
         ctx.stroke();
       }
     }
     ctx.restore();
 
-    // 2. Draw Visible Circles at Detected Joints (shoulders, elbows, wrists, hips, knees, ankles)
-    const activePostureColor = COLOR_MAP[status] || DEFAULT_YELLOW_THEME;
+    // 4. Draw Visible Circles at Detected Joints (shoulders, elbows, wrists, hips, knees, ankles)
+    const activeColor = COLOR_MAP[st] || DEFAULT_YELLOW_THEME;
 
-    landmarks.forEach((lm, idx) => {
-      // Keep key body joints: nose (0) and body joints (11 to 32)
+    lms.forEach((lmRaw, idx) => {
+      // Exclude facial landmark cluster (1-10); keep nose (0) and body joints (11-32)
       if (idx > 0 && idx < 11) return;
-      const v = typeof lm?.visibility === 'number' ? lm.visibility : 1.0;
+      const pt = toScreen(lmRaw);
+      if (!pt || pt.visibility < 0.15) return;
 
-      if (v > 0.25) {
-        const x = lm.x * w;
-        const y = lm.y * h;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 6, 0, 2 * Math.PI);
 
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, y, 6, 0, 2 * Math.PI);
-        // Bright yellow joint center fill with posture-coded glow
-        ctx.fillStyle = '#FEF08A';
-        ctx.shadowColor = activePostureColor.glow;
-        ctx.shadowBlur = 12;
-        ctx.fill();
+      // Bright yellow joint center fill with posture-coded glow
+      ctx.fillStyle = '#FEF08A';
+      ctx.shadowColor = activeColor.glow;
+      ctx.shadowBlur = 12;
+      ctx.fill();
 
-        ctx.lineWidth = 2.5;
-        ctx.strokeStyle = activePostureColor.stroke;
-        ctx.stroke();
-        ctx.restore();
-      }
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = activeColor.stroke;
+      ctx.stroke();
+      ctx.restore();
     });
 
-    // 3. Render Real-time Anatomical Joint Angle Callouts
+    // 5. Render Real-time Anatomical Joint Angle Callouts
     ctx.save();
     ctx.font = '700 12px monospace';
     ctx.textAlign = 'center';
@@ -179,18 +193,55 @@ export function SkeletonCanvas({
       ctx.fillText(text, x, y + 4);
     };
 
-    if (angles.knee_angle && landmarks[25] && (landmarks[25].visibility ?? 1) > 0.3) {
-      drawAngleTag(`${Math.round(angles.knee_angle)}°`, landmarks[25].x * w + 35, landmarks[25].y * h);
+    if (angs?.knee_angle && lms[25]) {
+      const pt = toScreen(lms[25]);
+      if (pt && pt.visibility >= 0.2) {
+        drawAngleTag(`${Math.round(angs.knee_angle)}°`, pt.x + 35, pt.y);
+      }
     }
-    if (angles.elbow_angle && landmarks[13] && (landmarks[13].visibility ?? 1) > 0.3) {
-      drawAngleTag(`${Math.round(angles.elbow_angle)}°`, landmarks[13].x * w + 35, landmarks[13].y * h);
+    if (angs?.elbow_angle && lms[13]) {
+      const pt = toScreen(lms[13]);
+      if (pt && pt.visibility >= 0.2) {
+        drawAngleTag(`${Math.round(angs.elbow_angle)}°`, pt.x + 35, pt.y);
+      }
     }
-    if (angles.hip_angle && landmarks[23] && (landmarks[23].visibility ?? 1) > 0.3) {
-      drawAngleTag(`${Math.round(angles.hip_angle)}°`, landmarks[23].x * w - 35, landmarks[23].y * h);
+    if (angs?.hip_angle && lms[23]) {
+      const pt = toScreen(lms[23]);
+      if (pt && pt.visibility >= 0.2) {
+        drawAngleTag(`${Math.round(angs.hip_angle)}°`, pt.x - 35, pt.y);
+      }
     }
 
     ctx.restore();
+  };
+
+  // Render on every incoming landmark frame
+  useEffect(() => {
+    renderFrame();
   }, [landmarks, status, angles, connectionColors]);
+
+  // Synchronize on container / video resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleResize = () => {
+      renderFrame();
+    };
+
+    let observer = null;
+    const target = canvas.parentElement || videoRef?.current;
+    if (window.ResizeObserver && target) {
+      observer = new ResizeObserver(handleResize);
+      observer.observe(target);
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (observer) observer.disconnect();
+    };
+  }, [videoRef]);
 
   return (
     <canvas
